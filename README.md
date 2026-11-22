@@ -45,6 +45,8 @@ Dusk talks to your external displays the way their own buttons do (DDC/CI), so b
 2. Open it. Dusk isn't notarized by Apple yet, so macOS blocks the first launch. Go to **System Settings › Privacy & Security**, scroll down and click **Open Anyway**. You only do this once.
 3. To use the keyboard's brightness keys, allow Dusk in **System Settings › Privacy & Security › Accessibility** (Dusk offers to open it for you).
 
+Dusk then updates itself: it checks once a day and installs new versions quietly when it quits. If you have version 0.1.0, download the latest version once by hand; updates are automatic from then on.
+
 ## Build from source
 
 ```sh

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Dusk</title>
+    <item>
+      <title>Dusk 0.1.1</title>
+      <link>https://github.com/pierrefardel/dusk/releases/tag/v0.1.1</link>
+      <pubDate>Sun, 22 Nov 2026 11:32:35 GMT</pubDate>
+      <sparkle:version>0.1.1</sparkle:version>
+      <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/pierrefardel/dusk/releases/download/v0.1.1/Dusk.zip" type="application/octet-stream" sparkle:edSignature="6HPBodTI9ngjBQKw1JI5zZxdlGp2XvPNynX3H03X1TVVzqYYby1zMwL8zPYiKs9GyNeZrmLYxPOMS4P4bivIBw==" length="1621737"/>
+    </item>
+  </channel>
+</rss>

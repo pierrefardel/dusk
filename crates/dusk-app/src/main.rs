@@ -7,6 +7,7 @@ mod mediakeys;
 mod settings;
 mod sun_view;
 mod theme;
+mod updater;
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
@@ -25,5 +26,6 @@ fn main() {
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
     let delegate = app::AppDelegate::new(mtm, engine);
     app.setDelegate(Some(app::delegate_object(&delegate)));
+    updater::start();
     app.run();
 }

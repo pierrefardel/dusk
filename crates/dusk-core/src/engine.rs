@@ -90,6 +90,20 @@ impl Control {
 /// Pause après un réglage à valeurs listées (mode d'image, couleur, entrée).
 const SETTLE: std::time::Duration = std::time::Duration::from_millis(300);
 
+/// Fondu de luminosité : nombre d'étapes, et écart minimal (en points) pour en faire un.
+/// Chaque écriture DDC prend au moins 50 ms : 4 étapes durent environ 200 ms.
+const FADE_STEPS: usize = 4;
+const FADE_MIN: f32 = 3.0;
+
+/// Valeurs intermédiaires d'un fondu de `from` à `to` (`to` compris), ou `to` seul
+/// si l'écart est trop petit pour qu'un fondu se voie.
+fn fade_steps(from: f32, to: f32) -> Vec<f32> {
+    if (to - from).abs() < FADE_MIN {
+        return vec![to];
+    }
+    (1..=FADE_STEPS).map(|i| from + (to - from) * i as f32 / FADE_STEPS as f32).collect()
+}
+
 /// Écriture en attente : pourcentage (mis à l'échelle du max) ou valeur brute.
 #[derive(Debug, Clone, Copy)]
 enum Write {
@@ -860,50 +874,70 @@ fn spawn_entry(display: Arc<Display>, config: &mut Config) -> Entry {
         let (d, s) = (display.clone(), slot.clone());
         thread::Builder::new()
             .name(format!("dusk-writer-{}", display.id))
-            .spawn(move || loop {
-                let batch = {
-                    let mut guard = s
-                        .cv
-                        .wait_while(s.pending.lock().unwrap(), |p| p.is_empty() && !s.stopped.load(Ordering::Relaxed))
-                        .unwrap();
-                    if s.stopped.load(Ordering::Relaxed) {
-                        break;
-                    }
-                    std::mem::take(&mut *guard)
-                };
-                for (code, w) in batch {
-                    let max = maxes.get(&code).copied().unwrap_or(100);
-                    let raw = match w {
-                        Write::Pct(pct) => (pct.clamp(0.0, 100.0) / 100.0 * max as f32).round() as u16,
-                        Write::Raw(v) | Write::Alt(v) => v,
+            .spawn(move || {
+                // Dernière luminosité envoyée : point de départ du fondu suivant.
+                let mut sent: Option<f32> = None;
+                loop {
+                    let batch = {
+                        let mut guard = s
+                            .cv
+                            .wait_while(s.pending.lock().unwrap(), |p| p.is_empty() && !s.stopped.load(Ordering::Relaxed))
+                            .unwrap();
+                        if s.stopped.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        std::mem::take(&mut *guard)
                     };
-                    let send = || match (code, w, d.ddc()) {
-                        (VCP_BRIGHTNESS, Write::Pct(pct), _) => d.set_brightness(pct, max),
-                        (_, Write::Alt(_), Some(ddc)) => ddc.write_alt(code, raw),
-                        (_, _, Some(ddc)) => ddc.write(code, raw),
-                        _ => Ok(()),
-                    };
-                    if let Err(e) = send() {
-                        eprintln!("[dusk] {} : {e}", d.name);
-                    }
-                    if !matches!(w, Write::Raw(_) | Write::Alt(_)) {
-                        continue;
-                    }
-                    // Mode, couleur, entrée : l'écran met du temps à basculer et
-                    // ignore ce qu'il reçoit entre-temps.
-                    thread::sleep(SETTLE);
-                    // Vérification par relecture (réglages listés, écran qui répond) :
-                    // un second refus masque le réglage pour cet écran.
-                    let (Some(ddc), true, Write::Raw(_)) = (d.ddc(), s.verify && verifiable(code), w) else { continue };
-                    let applied = || ddc.read(code).map(|v| v.current == raw);
-                    if applied().is_ok_and(|ok| !ok) {
-                        let _ = send();
-                        thread::sleep(SETTLE);
-                        if applied().is_ok_and(|ok| !ok) {
-                            if crate::ddc::debug() {
-                                eprintln!("[dusk] {} : VCP {code:#04x} refusé deux fois, réglage masqué", d.name);
+                    for (code, w) in batch {
+                        let max = maxes.get(&code).copied().unwrap_or(100);
+                        let raw = match w {
+                            Write::Pct(pct) => (pct.clamp(0.0, 100.0) / 100.0 * max as f32).round() as u16,
+                            Write::Raw(v) | Write::Alt(v) => v,
+                        };
+                        if let (VCP_BRIGHTNESS, Write::Pct(pct)) = (code, w) {
+                            // Fondu : certains écrans adoucissent eux-mêmes le changement,
+                            // d'autres sautent d'un coup ; Dusk le fait pour tous. Une
+                            // nouvelle valeur demandée en route interrompt le fondu.
+                            let to = pct.clamp(0.0, 100.0);
+                            let steps = sent.map_or_else(|| vec![to], |from| fade_steps(from, to));
+                            for v in steps {
+                                if s.pending.lock().unwrap().contains_key(&VCP_BRIGHTNESS) {
+                                    break;
+                                }
+                                if let Err(e) = d.set_brightness(v, max) {
+                                    eprintln!("[dusk] {} : {e}", d.name);
+                                }
+                                sent = Some(v);
                             }
-                            s.refused.lock().unwrap().push(code);
+                            continue;
+                        }
+                        let send = || match (code, w, d.ddc()) {
+                            (_, Write::Alt(_), Some(ddc)) => ddc.write_alt(code, raw),
+                            (_, _, Some(ddc)) => ddc.write(code, raw),
+                            _ => Ok(()),
+                        };
+                        if let Err(e) = send() {
+                            eprintln!("[dusk] {} : {e}", d.name);
+                        }
+                        if !matches!(w, Write::Raw(_) | Write::Alt(_)) {
+                            continue;
+                        }
+                        // Mode, couleur, entrée : l'écran met du temps à basculer et
+                        // ignore ce qu'il reçoit entre-temps.
+                        thread::sleep(SETTLE);
+                        // Vérification par relecture (réglages listés, écran qui répond) :
+                        // un second refus masque le réglage pour cet écran.
+                        let (Some(ddc), true, Write::Raw(_)) = (d.ddc(), s.verify && verifiable(code), w) else { continue };
+                        let applied = || ddc.read(code).map(|v| v.current == raw);
+                        if applied().is_ok_and(|ok| !ok) {
+                            let _ = send();
+                            thread::sleep(SETTLE);
+                            if applied().is_ok_and(|ok| !ok) {
+                                if crate::ddc::debug() {
+                                    eprintln!("[dusk] {} : VCP {code:#04x} refusé deux fois, réglage masqué", d.name);
+                                }
+                                s.refused.lock().unwrap().push(code);
+                            }
                         }
                     }
                 }
@@ -926,4 +960,20 @@ fn read_initial(d: &Display) -> (Option<f32>, u16) {
         };
     }
     (d.brightness().ok(), 100)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fade_steps;
+
+    #[test]
+    fn fade_goes_through_even_steps() {
+        assert_eq!(fade_steps(50.0, 70.0), vec![55.0, 60.0, 65.0, 70.0]);
+        assert_eq!(fade_steps(70.0, 50.0), vec![65.0, 60.0, 55.0, 50.0]);
+    }
+
+    #[test]
+    fn small_change_is_direct() {
+        assert_eq!(fade_steps(50.0, 52.0), vec![52.0]);
+    }
 }
