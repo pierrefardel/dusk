@@ -207,8 +207,15 @@ define_class!(
             // Sans autorisation, on retente l'interception toutes les 2 s.
             let n = self.ivars().ticks.get().wrapping_add(1);
             self.ivars().ticks.set(n);
-            if !self.ivars().media_keys.get() && n % 40 == 0 {
-                self.ivars().media_keys.set(mediakeys::start());
+            if !self.ivars().media_keys.get() && n % 40 == 0 && mediakeys::start() {
+                // Autorisation accordée pendant que Dusk tourne : l'interception
+                // marche, mais macOS laisse aussi passer les touches (double réglage).
+                // Un redémarrage règle ça, Dusk le fait donc tout seul.
+                if relaunch() {
+                    NSApplication::sharedApplication(self.mtm()).terminate(None);
+                    return;
+                }
+                self.ivars().media_keys.set(true);
             }
             self.poll_hotkeys();
             if let Some(h) = self.ivars().hud.get() {
@@ -693,6 +700,19 @@ fn control_text(c: Control, v: f32) -> String {
 
 fn pct(v: f32) -> String {
     format!("{:.0} %", v)
+}
+
+/// Relance Dusk une seconde après sa fermeture (app installée seulement, pas
+/// `target/`). Renvoie `false` si la relance n'a pas pu être programmée.
+fn relaunch() -> bool {
+    let bundle = objc2_foundation::NSBundle::mainBundle().bundlePath().to_string();
+    if !bundle.ends_with(".app") {
+        return false;
+    }
+    std::process::Command::new("/bin/sh")
+        .args(["-c", "sleep 1; /usr/bin/open \"$0\"", &bundle])
+        .spawn()
+        .is_ok()
 }
 
 fn register_hotkeys() -> Option<Hotkeys> {

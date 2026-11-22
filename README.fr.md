@@ -43,7 +43,7 @@ Dusk parle à tes écrans externes comme le font leurs propres boutons (DDC/CI) 
 
 1. Télécharge `Dusk.zip` depuis la [dernière version](../../releases/latest) et place `Dusk.app` dans ton dossier Applications.
 2. Ouvre-le. Dusk n'est pas encore notarisé par Apple, donc macOS bloque le premier lancement. Va dans **Réglages Système › Confidentialité et sécurité**, descends et clique sur **Ouvrir quand même**. Une seule fois suffit.
-3. Pour utiliser les touches de luminosité du clavier, autorise Dusk dans **Réglages Système › Confidentialité et sécurité › Accessibilité** (Dusk propose d'y aller pour toi).
+3. Pour les touches de luminosité, autorise Dusk quand macOS te le demande (Dusk se relance tout seul ensuite).
 
 Ensuite, Dusk se met à jour tout seul : il vérifie une fois par jour et installe les nouvelles versions en silence quand il se ferme. Si tu as la version 0.1.0, télécharge une fois la dernière version à la main ; tout est automatique ensuite.
 
