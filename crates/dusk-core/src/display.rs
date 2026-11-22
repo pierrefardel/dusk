@@ -199,6 +199,12 @@ pub fn list_displays() -> Vec<Display> {
             d.backend = Backend::None;
         }
     }
+    // Captures pour la documentation : DUSK_DEMO="Nom 1,Nom 2" remplace les vrais noms.
+    if let Ok(names) = std::env::var("DUSK_DEMO") {
+        for (d, name) in displays.iter_mut().zip(names.split(',')) {
+            d.name = name.trim().to_string();
+        }
+    }
     for d in displays.iter_mut().filter(|d| d.name.is_empty()) {
         d.name = if d.builtin { "Écran intégré".into() } else { format!("Écran {}", d.id) };
     }

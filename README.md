@@ -1,6 +1,12 @@
 # Dusk
 
-**Hardware brightness for every display on your Mac, from the menu bar.**
+**Every button on your monitor, in your Mac's menu bar.**
+
+Control your displays from the menu bar: brightness, colour, input, sound and more, automatically through the day.
+
+<p align="center">
+  <img src="docs/screenshots/popover-en.png" width="352" alt="Dusk menu: a slider for all displays, the Automatic switch, and a slider per display">
+</p>
 
 Dusk talks to your external displays the way their own buttons do (DDC/CI), so brightness changes on the panel itself instead of a grey overlay. It also handles the rest of what a display can do, adjusts itself through the day, and stays out of your way.
 
@@ -14,6 +20,18 @@ Dusk talks to your external displays the way their own buttons do (DDC/CI), so b
 - **Automatic**: brighter by day, softer in the evening, based on your Mac's time zone (no location access). On Macs with a light sensor, it follows the room light instead. Every manual change is remembered for that moment of the day.
 - **Everything your display can do**, without hunting for its buttons: picture mode, colour and RGB, input, sharpness, on-screen menu language, sound, power, factory reset. Only the settings your display accepts are shown.
 - **Three themes**, light and dark, in English and French.
+
+<p align="center">
+  <img src="docs/screenshots/displays-en.png" width="720" alt="Displays settings: brightness, contrast, picture mode, colour and sound of a display">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/automatic-en.png" width="720" alt="Automatic settings: brightness follows the sun through the day">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/shortcuts-en.png" width="720" alt="Shortcuts: brightness keys for the display under the pointer, ⌥ for all displays">
+</p>
 
 ## Requirements
 

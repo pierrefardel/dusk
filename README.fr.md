@@ -1,6 +1,12 @@
 # Dusk
 
-**La luminosité de tous tes écrans, réglée au niveau matériel, depuis la barre des menus du Mac.**
+**Tous les boutons de ton écran, dans la barre des menus du Mac.**
+
+Pilote tes écrans depuis la barre des menus : luminosité, couleur, entrée, son et plus, automatiquement au fil de la journée.
+
+<p align="center">
+  <img src="docs/screenshots/popover-fr.png" width="352" alt="Menu de Dusk : un curseur pour tous les écrans, l'interrupteur Automatique et un curseur par écran">
+</p>
 
 Dusk parle à tes écrans externes comme le font leurs propres boutons (DDC/CI) : la luminosité change dans la dalle elle-même, pas avec un voile gris par-dessus. Il gère aussi tout ce que l'écran sait faire, s'adapte au fil de la journée, et sait se faire oublier.
 
@@ -14,6 +20,18 @@ Dusk parle à tes écrans externes comme le font leurs propres boutons (DDC/CI) 
 - **Automatique** : plus lumineux le jour, plus doux le soir, d'après le fuseau horaire du Mac (sans demander ta position). Sur un Mac équipé d'un capteur de lumière, il suit plutôt la lumière de la pièce. Chaque réglage à la main est retenu pour ce moment de la journée.
 - **Tout ce que ton écran sait faire**, sans chercher ses boutons : mode d'image, couleur et RVB, entrée, netteté, langue des menus, son, alimentation, réglages d'usine. Seuls les réglages que ton écran accepte sont affichés.
 - **Trois thèmes**, clair et sombre, en français et en anglais.
+
+<p align="center">
+  <img src="docs/screenshots/displays-fr.png" width="720" alt="Réglages des écrans : luminosité, contraste, mode d'image, couleur et son d'un écran">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/automatic-fr.png" width="720" alt="Réglages automatiques : la luminosité suit le soleil au fil de la journée">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/shortcuts-fr.png" width="720" alt="Raccourcis : touches de luminosité pour l'écran sous la souris, ⌥ pour tous les écrans">
+</p>
 
 ## Configuration requise
 
