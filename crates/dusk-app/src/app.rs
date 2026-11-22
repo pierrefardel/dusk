@@ -3,6 +3,7 @@
 use crate::hud::Hud;
 use crate::mediakeys::{self, KeyPress};
 use crate::settings::Settings;
+use crate::welcome::Welcome;
 use crate::i18n::{t, tx};
 use crate::theme::{self, ns};
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
@@ -63,6 +64,10 @@ pub struct Ivars {
     settings: OnceCell<Retained<Settings>>,
     /// Redétection différée après un changement d'écrans (évite les rafales).
     rescan_timer: RefCell<Option<Retained<NSTimer>>>,
+    /// Accueil du premier lancement (fenêtre de bienvenue).
+    welcome: OnceCell<Retained<Welcome>>,
+    /// Bulle « C'est prêt » à montrer : avec les touches (autorisées) ou sans.
+    ready_keys: Cell<bool>,
 }
 
 define_class!(
@@ -186,7 +191,15 @@ define_class!(
         #[unsafe(method(snapshot:))]
         fn snapshot(&self, _t: &NSTimer) {
             let Ok(path) = std::env::var("DUSK_SNAPSHOT") else { return };
-            if let Some(view) = self.ivars().settings.get().and_then(|s| s.content_view()) {
+            let preview = std::env::var("DUSK_PREVIEW").unwrap_or_default();
+            if preview.starts_with("ready") {
+                let view = self.build_ready(!preview.ends_with(":nokeys"));
+                view.setFrameSize(view.fittingSize());
+                view.layoutSubtreeIfNeeded();
+                theme::snapshot(&view, &path);
+            } else if let Some(view) = self.ivars().welcome.get().and_then(|w| w.content_view()) {
+                theme::snapshot(&view, &path);
+            } else if let Some(view) = self.ivars().settings.get().and_then(|s| s.content_view()) {
                 theme::snapshot(&view, &path);
             } else {
                 // Contenu du popover rendu hors écran (indépendant de son affichage).
@@ -194,6 +207,19 @@ define_class!(
                 view.setFrameSize(view.fittingSize());
                 view.layoutSubtreeIfNeeded();
                 theme::snapshot(&view, &path);
+            }
+        }
+
+        /// Bulle « C'est prêt », accrochée à l'icône de la barre des menus.
+        #[unsafe(method(showReady:))]
+        fn show_ready_now(&self, _t: Option<&NSTimer>) {
+            self.show_ready(self.ivars().ready_keys.get());
+        }
+
+        #[unsafe(method(readyDone:))]
+        fn ready_done(&self, _sender: Option<&AnyObject>) {
+            if let Some(p) = self.ivars().popover.get() {
+                unsafe { p.performClose(None) };
             }
         }
 
@@ -216,6 +242,12 @@ define_class!(
                     return;
                 }
                 self.ivars().media_keys.set(true);
+                if let Some(w) = self.ivars().welcome.get().filter(|w| w.is_open()) {
+                    w.granted();
+                }
+            }
+            if let Some(w) = self.ivars().welcome.get() {
+                w.tick();
             }
             self.poll_hotkeys();
             if let Some(h) = self.ivars().hud.get() {
@@ -248,6 +280,8 @@ impl AppDelegate {
             ticks: Cell::new(0),
             settings: OnceCell::new(),
             rescan_timer: RefCell::new(None),
+            welcome: OnceCell::new(),
+            ready_keys: Cell::new(false),
         });
         unsafe { msg_send![super(this), init] }
     }
@@ -290,10 +324,10 @@ impl AppDelegate {
 
         let _ = self.ivars().hud.set(Hud::new(mtm));
         let _ = self.ivars().hotkeys.set(register_hotkeys());
-        if !mediakeys::is_trusted(false) {
-            mediakeys::is_trusted(true);
-        }
-        self.ivars().media_keys.set(mediakeys::start());
+        // L'autorisation des touches se demande depuis l'accueil ou Réglages › Raccourcis,
+        // jamais d'office à chaque lancement.
+        let trusted = mediakeys::start();
+        self.ivars().media_keys.set(trusted);
 
         // Réveil et branchement / débranchement d'écrans.
         unsafe {
@@ -332,10 +366,29 @@ impl AppDelegate {
         let _ = self.ivars().timer.set(timer);
         self.ivars().engine.solar_jump();
 
-        // Aperçu pour le développement : DUSK_PREVIEW=popover | hud | settings[:page[:écran]].
-        if let Ok(p) = std::env::var("DUSK_PREVIEW") {
+        let preview = std::env::var("DUSK_PREVIEW").ok();
+        if preview.is_none() {
+            match self.ivars().engine.config().welcome {
+                // Relancé après l'autorisation : la bulle « C'est prêt ».
+                dusk_core::Welcome::Waiting if trusted => {
+                    self.ivars().engine.update_config(|c| c.welcome = dusk_core::Welcome::Done);
+                    self.schedule_ready(true);
+                }
+                dusk_core::Welcome::Done => {}
+                _ => self.welcome().show(0),
+            }
+        }
+
+        // Aperçu pour le développement : DUSK_PREVIEW=popover | hud | settings[:page[:écran]]
+        // | welcome[:étape] | ready[:nokeys].
+        if let Some(p) = preview {
             match p.split(':').next() {
                 Some("popover") => self.toggle(),
+                Some("welcome") => {
+                    let step = p.split(':').nth(1).and_then(|n| n.parse().ok()).unwrap_or(0);
+                    self.welcome().show(step);
+                }
+                Some("ready") => self.show_ready(!p.ends_with(":nokeys")),
                 Some("hud") => self.show_hud(None),
                 Some("settings") => {
                     let page = p.split(':').nth(1).and_then(|n| n.parse().ok()).unwrap_or(0);
@@ -358,6 +411,86 @@ impl AppDelegate {
                 };
             }
         }
+    }
+
+    fn welcome(&self) -> &Welcome {
+        self.ivars().welcome.get_or_init(|| {
+            let this = objc2::Message::retain(self);
+            let on_finish = Box::new(move |keys: bool| this.schedule_ready(keys));
+            Welcome::new(self.mtm(), self.ivars().engine.clone(), on_finish)
+        })
+    }
+
+    /// Bulle « C'est prêt » un instant plus tard (icône de barre des menus en place).
+    fn schedule_ready(&self, keys: bool) {
+        self.ivars().ready_keys.set(keys);
+        unsafe {
+            NSTimer::scheduledTimerWithTimeInterval_target_selector_userInfo_repeats(
+                0.5,
+                self.target(),
+                sel!(showReady:),
+                None,
+                false,
+            )
+        };
+    }
+
+    fn show_ready(&self, keys: bool) {
+        let mtm = self.mtm();
+        let (Some(popover), Some(item)) = (self.ivars().popover.get(), self.ivars().status_item.get()) else {
+            return;
+        };
+        popover.setAppearance(theme::appearance().as_deref());
+        let content = self.build_ready(keys);
+        if let Some(c) = self.ivars().controller.get() {
+            c.setView(&content);
+        }
+        self.resize_popover();
+        if let Some(button) = item.button(mtm) {
+            popover.showRelativeToRect_ofView_preferredEdge(button.bounds(), &button, NSRectEdge::MinY);
+        }
+        #[allow(deprecated)]
+        NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
+    }
+
+    /// Contenu de la bulle : où vit Dusk et, touches autorisées, les deux gestes à retenir.
+    fn build_ready(&self, keys: bool) -> Retained<NSView> {
+        let mtm = self.mtm();
+        let inner = POPOVER_WIDTH - 2.0 * theme::S3;
+        let card_inner = inner - 2.0 * theme::S2;
+        let root = theme::stack(mtm, true, theme::S2);
+        theme::insets(&root, theme::S3, theme::S3);
+        theme::fixed_width(&root, POPOVER_WIDTH);
+
+        let head = theme::stack(mtm, true, theme::HALF);
+        head.addArrangedSubview(&theme::label(mtm, t("ready.title"), 20.0, true, &theme::text()));
+        head.addArrangedSubview(&theme::wrapping(mtm, t("ready.lead"), 13.0, &theme::secondary(), inner));
+        root.addArrangedSubview(&head);
+
+        if keys {
+            let rows = theme::stack(mtm, true, theme::S2);
+            let combos: [(&[&[&str]], &str); 2] =
+                [(&[&["F1", "F2"]], t("ready.under")), (&[&["⌥"], &["F1", "F2"]], t("keys.all"))];
+            for (groups, text) in combos {
+                let keys = theme::kbd_combo(mtm, groups);
+                let label = theme::label(mtm, text, 12.0, false, &theme::secondary());
+                let row = theme::spread(mtm, &[&keys], &[&label]);
+                theme::fixed_width(&row, card_inner);
+                rows.addArrangedSubview(&row);
+            }
+            let card = theme::card(mtm, &rows, &theme::card_bg(), theme::S1 + theme::HALF, theme::S2);
+            theme::fixed_width(&card, inner);
+            root.addArrangedSubview(&card);
+        }
+
+        let b = self.button(t("ready.done"), Some(sel!(readyDone:)));
+        let done = theme::pill_button(mtm, &b, theme::Pill::Primary);
+        let row = theme::spread(mtm, &[], &[&done]);
+        theme::fixed_width(&row, inner);
+        root.addArrangedSubview(&row);
+
+        let bg = theme::card(mtm, &root, &theme::surface(), 0.0, 0.0);
+        Retained::into_super(bg)
     }
 
     fn toggle(&self) {

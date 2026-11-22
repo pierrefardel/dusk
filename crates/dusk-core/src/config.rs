@@ -37,6 +37,21 @@ pub struct Config {
     pub solar: Solar,
     /// Suivre la lumière de la pièce (si le Mac a un capteur) : passe avant le soleil.
     pub room: bool,
+    /// Accueil du premier lancement : pas encore vu, en attente de l'autorisation, fini.
+    pub welcome: Welcome,
+}
+
+/// Étape de l'accueil du premier lancement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Welcome {
+    /// Jamais montré : fenêtre de bienvenue au lancement.
+    #[default]
+    New,
+    /// « Autoriser les touches » cliqué : après la relance, la bulle « C'est prêt ».
+    Waiting,
+    /// Terminé (ou réglages venus d'une version sans accueil).
+    Done,
 }
 
 /// Réglages de « Suivre le soleil ».
@@ -89,6 +104,7 @@ impl Default for Config {
             language: "auto".into(),
             solar: Solar::default(),
             room: true,
+            welcome: Welcome::New,
         }
     }
 }
@@ -110,10 +126,19 @@ impl Config {
                 }
             }
         }
-        std::fs::read(Self::path())
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default()
+        match std::fs::read(Self::path()) {
+            Ok(bytes) => Self::from_bytes(&bytes),
+            Err(_) => Self::default(),
+        }
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Self {
+        let mut config: Self = serde_json::from_slice(bytes).unwrap_or_default();
+        // Réglages d'une version sans accueil : Dusk est déjà en place, pas de bienvenue.
+        if !bytes.windows(9).any(|w| w == b"\"welcome\"") {
+            config.welcome = Welcome::Done;
+        }
+        config
     }
 
     pub fn save(&self) -> crate::Result<()> {
@@ -125,5 +150,19 @@ impl Config {
         std::fs::write(&tmp, serde_json::to_vec_pretty(self).expect("config sérialisable"))?;
         std::fs::rename(tmp, path)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn welcome_skipped_for_existing_settings() {
+        assert_eq!(Config::default().welcome, Welcome::New);
+        assert_eq!(Config::from_bytes(br#"{"master": 40.0}"#).welcome, Welcome::Done);
+        assert_eq!(Config::from_bytes(br#"{"welcome": "waiting"}"#).welcome, Welcome::Waiting);
+        let saved = serde_json::to_vec(&Config::default()).unwrap();
+        assert_eq!(Config::from_bytes(&saved).welcome, Welcome::New);
     }
 }

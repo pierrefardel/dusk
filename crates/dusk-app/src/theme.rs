@@ -477,6 +477,59 @@ pub fn kbd_combo(mtm: MainThreadMarker, groups: &[&[&str]]) -> Retained<NSStackV
     row
 }
 
+/// Rôle d'un bouton en pilule.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Pill {
+    /// Action principale : fond de la couleur d'action.
+    Primary,
+    /// Action secondaire : fond de piste.
+    Secondary,
+    /// Action discrète (« Plus tard ») : sans fond.
+    Plain,
+}
+
+/// Bouton en pilule de 40 px de haut, toute la pilule est cliquable.
+pub fn pill_button(mtm: MainThreadMarker, button: &objc2_app_kit::NSButton, kind: Pill) -> Retained<NSBox> {
+    button.setBordered(false);
+    let weight = unsafe { if kind == Pill::Primary { objc2_app_kit::NSFontWeightBold } else { NSFontWeightSemibold } };
+    button.setFont(Some(&rounded(NSFont::systemFontOfSize_weight(13.0, weight), 13.0)));
+    let (fill, tint) = match kind {
+        Pill::Primary => (accent(), on_accent()),
+        Pill::Secondary => (track(), text()),
+        Pill::Plain => (NSColor::clearColor(), secondary()),
+    };
+    button.setContentTintColor(Some(&tint));
+    let mx = if kind == Pill::Plain { S2 } else { S3 };
+    let b = card_xy(mtm, button, &fill, (S4 + S1) / 2.0, mx, S1 + HALF);
+    fixed_height(&b, S4 + S1);
+    b.setContentHuggingPriority_forOrientation(750.0, NSLayoutConstraintOrientation::Horizontal);
+    b
+}
+
+/// Interrupteur dessiné (illustration d'un réglage de macOS, sans action).
+pub fn drawn_switch(mtm: MainThreadMarker, on: bool) -> Retained<NSBox> {
+    let (w, h) = (S4 + S1, S3);
+    let track_box = pill(mtm, &*if on { accent() } else { track() }, w, h);
+    let knob = pill(mtm, &NSColor::whiteColor(), h - HALF, h - HALF);
+    track_box.addSubview(&knob);
+    knob.centerYAnchor().constraintEqualToAnchor(&track_box.centerYAnchor()).setActive(true);
+    if on {
+        knob.trailingAnchor().constraintEqualToAnchor_constant(&track_box.trailingAnchor(), -HALF / 2.0).setActive(true);
+    } else {
+        knob.leadingAnchor().constraintEqualToAnchor_constant(&track_box.leadingAnchor(), HALF / 2.0).setActive(true);
+    }
+    track_box
+}
+
+const APP_ICON_SVG: &[u8] = include_bytes!("../../../assets/AppIcon.svg");
+
+/// Icône de l'app « source et halos », en couleurs.
+pub fn app_icon(size: f64) -> Retained<NSImage> {
+    let img = NSImage::initWithData(NSImage::alloc(), &NSData::with_bytes(APP_ICON_SVG)).expect("icône d'app");
+    img.setSize(NSSize::new(size, size));
+    img
+}
+
 /// Zone de clic d'au moins 32 px de haut pour un bouton sans carte (lien, icône).
 pub fn roomy(b: &objc2_app_kit::NSButton) {
     b.heightAnchor().constraintGreaterThanOrEqualToConstant(S4).setActive(true);
@@ -517,6 +570,7 @@ pub enum Icon {
     Power,
     Tv,
     Bulb,
+    Keyboard,
 }
 
 pub fn icon(which: Icon, size: f64) -> Retained<NSImage> {
@@ -530,6 +584,7 @@ pub fn icon(which: Icon, size: f64) -> Retained<NSImage> {
         Icon::Power => include_bytes!("../../../assets/icons/power.svg"),
         Icon::Tv => include_bytes!("../../../assets/icons/tv.svg"),
         Icon::Bulb => include_bytes!("../../../assets/icons/bulb.svg"),
+        Icon::Keyboard => include_bytes!("../../../assets/icons/keyboard.svg"),
     };
     let img = NSImage::initWithData(NSImage::alloc(), &NSData::with_bytes(svg)).expect("icône SVG");
     img.setSize(NSSize::new(size, size));

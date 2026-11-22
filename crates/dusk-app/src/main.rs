@@ -8,6 +8,7 @@ mod settings;
 mod sun_view;
 mod theme;
 mod updater;
+mod welcome;
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};

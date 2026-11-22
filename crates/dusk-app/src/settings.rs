@@ -314,8 +314,7 @@ define_class!(
 
         #[unsafe(method(openAccessibility:))]
         fn open_accessibility(&self, _sender: Option<&AnyObject>) {
-            mediakeys::is_trusted(true);
-            open_url("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
+            mediakeys::open_accessibility();
         }
 
         #[unsafe(method(toggleLogin:))]
@@ -709,10 +708,4 @@ fn info(mtm: MainThreadMarker, key: &str, value: &str) -> Retained<NSStackView> 
     row.addArrangedSubview(&k);
     row.addArrangedSubview(&v);
     row
-}
-
-fn open_url(s: &str) {
-    if let Some(url) = NSURL::URLWithString(&ns(s)) {
-        NSWorkspace::sharedWorkspace().openURL(&url);
-    }
 }

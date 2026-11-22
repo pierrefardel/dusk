@@ -123,10 +123,24 @@ pub fn is_trusted(prompt: bool) -> bool {
     unsafe { AXIsProcessTrustedWithOptions(Retained::as_ptr(&opts).cast()) }
 }
 
+/// Demande l'autorisation et ouvre la rubrique des réglages de macOS où activer Dusk.
+pub fn open_accessibility() {
+    is_trusted(true);
+    let url = NSString::from_str("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
+    if let Some(url) = objc2_foundation::NSURL::URLWithString(&url) {
+        objc2_app_kit::NSWorkspace::sharedWorkspace().openURL(&url);
+    }
+}
+
 /// Installe le tap sur la boucle principale. Renvoie `false` sans autorisation.
 pub fn start() -> bool {
     if !TAP.load(Ordering::Relaxed).is_null() {
         return true;
+    }
+    // Sans autorisation, créer le tap ferait surgir la demande de macOS
+    // (par-dessus l'accueil) : on vérifie d'abord, en silence.
+    if !is_trusted(false) {
+        return false;
     }
     unsafe {
         // kCGSessionEventTap = 1, kCGHeadInsertEventTap = 0, kCGEventTapOptionDefault = 0

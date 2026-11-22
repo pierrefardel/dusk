@@ -18,7 +18,7 @@ pub mod solar;
 mod sync;
 
 pub use cg::{display_under_cursor, set_display_enabled};
-pub use config::{Config, Solar};
+pub use config::{Config, Solar, Welcome};
 pub use dim::DIM_MIN;
 pub use display::{list_displays, Backend, Display};
 pub use engine::{Control, DisplayState, Engine, SleepingDisplay, SolarPhase, SolarStatus};
