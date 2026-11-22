@@ -115,7 +115,7 @@ impl DdcService {
         let mut last = Error::Ddc("pas de réponse".into());
         for _ in 0..READ_RETRIES {
             let mut p = [0x82, 0x01, code, 0];
-            p[3] = checksum(0x6E, &p[..3]);
+            p[3] = checksum(0x6E ^ 0x51, &p[..3]);
             if let Err(e) = self.write_raw(&mut p) {
                 last = e;
                 continue;

@@ -24,6 +24,7 @@ use objc2_foundation::{NSNotification, NSNotificationCenter, NSObject, NSObjectP
 use block2::RcBlock;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::ptr::NonNull;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 const POPOVER_WIDTH: f64 = 352.0;
@@ -68,6 +69,9 @@ pub struct Ivars {
     welcome: OnceCell<Retained<Welcome>>,
     /// Bulle « C'est prêt » à montrer : avec les touches (autorisées) ou sans.
     ready_keys: Cell<bool>,
+    /// Relecture des écrans en cours (ouverture du popover) / valeurs relues à afficher.
+    polling: Arc<AtomicBool>,
+    polled: Arc<AtomicBool>,
 }
 
 define_class!(
@@ -250,6 +254,10 @@ define_class!(
                 w.tick();
             }
             self.poll_hotkeys();
+            // Valeurs relues sur les écrans à l'ouverture du popover.
+            if self.ivars().polled.swap(false, Ordering::Relaxed) {
+                self.refresh_values();
+            }
             if let Some(h) = self.ivars().hud.get() {
                 h.tick();
             }
@@ -282,6 +290,8 @@ impl AppDelegate {
             rescan_timer: RefCell::new(None),
             welcome: OnceCell::new(),
             ready_keys: Cell::new(false),
+            polling: Arc::new(AtomicBool::new(false)),
+            polled: Arc::new(AtomicBool::new(false)),
         });
         unsafe { msg_send![super(this), init] }
     }
@@ -519,6 +529,26 @@ impl AppDelegate {
         if let Some(w) = self.ivars().controller.get().and_then(|c| c.view().window()) {
             w.makeKeyWindow();
         }
+        self.poll_displays();
+    }
+
+    /// Relit les écrans en arrière-plan (boutons de l'écran, réglage fait ailleurs) ;
+    /// les curseurs suivent au tic suivant si une valeur a changé.
+    fn poll_displays(&self) {
+        if self.ivars().polling.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        let (engine, polling, polled) =
+            (self.ivars().engine.clone(), self.ivars().polling.clone(), self.ivars().polled.clone());
+        let spawned = std::thread::Builder::new().name("dusk-poll".into()).spawn(move || {
+            if engine.poll_hardware() {
+                polled.store(true, Ordering::Relaxed);
+            }
+            polling.store(false, Ordering::Relaxed);
+        });
+        if spawned.is_err() {
+            self.ivars().polling.store(false, Ordering::Relaxed);
+        }
     }
 
     fn resize_popover(&self) {
@@ -753,6 +783,13 @@ impl AppDelegate {
                     n.setHidden(hide);
                     relayout = true;
                 }
+            }
+        }
+        let displays = engine.displays();
+        for (i, c, s, l) in &r.controls {
+            if let Some(v) = displays.get(*i).and_then(|d| d.level(*c)) {
+                s.setDoubleValue(v as f64);
+                l.setStringValue(&ns(&control_text(*c, v)));
             }
         }
         drop(refs);

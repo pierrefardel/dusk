@@ -95,6 +95,10 @@ const SETTLE: std::time::Duration = std::time::Duration::from_millis(300);
 const FADE_STEPS: usize = 4;
 const FADE_MIN: f32 = 3.0;
 
+/// Écart minimal (points) entre la valeur lue et celle connue pour la reprendre :
+/// en dessous, c'est l'arrondi de l'écran.
+const POLL_TOLERANCE: f32 = 1.5;
+
 /// Valeurs intermédiaires d'un fondu de `from` à `to` (`to` compris), ou `to` seul
 /// si l'écart est trop petit pour qu'un fondu se voie.
 fn fade_steps(from: f32, to: f32) -> Vec<f32> {
@@ -122,6 +126,8 @@ struct Slot {
     verify: bool,
     /// Réglages que l'écran a refusés deux fois de suite (à masquer).
     refused: Mutex<Vec<u8>>,
+    /// Écritures en cours (fondu compris) : une relecture donnerait une valeur de passage.
+    busy: AtomicBool,
 }
 
 impl Slot {
@@ -391,6 +397,75 @@ impl Engine {
         g.config.caps = config.caps;
         g.place = solar::place(solar::now().offset);
         let _ = g.config.save();
+    }
+
+    /// Relit la luminosité et le volume des écrans qui répondent, pour suivre un
+    /// réglage fait ailleurs (boutons de l'écran, macOS). Bloquant (I2C, ~100 ms par
+    /// écran) : à appeler hors du fil principal. `true` si une valeur a changé.
+    pub fn poll_hardware(&self) -> bool {
+        // Écrans à relire, avec leurs valeurs actuelles : on ne touche ni aux écrans
+        // « plus sombres » (le matériel est à 0), ni à ceux qui reçoivent un réglage.
+        let snapshot: Vec<(usize, Arc<Display>, f32, Option<f32>)> = {
+            let g = self.inner.lock().unwrap();
+            g.entries
+                .iter()
+                .enumerate()
+                .filter(|(_, e)| e.display.has_hardware() && !e.write_only && e.brightness >= 0.0)
+                .map(|(i, e)| (i, e.display.clone(), e.brightness, e.controls.get(&VCP_VOLUME).copied()))
+                .collect()
+        };
+        let reads: Vec<_> = snapshot
+            .into_iter()
+            .map(|(i, d, b, vol)| {
+                let bright = read_initial(&d).0;
+                let volume = vol.and_then(|_| d.ddc()).and_then(|s| s.read(VCP_VOLUME).ok()).map(|v| {
+                    let m = if v.max == 0 { 100 } else { v.max };
+                    v.current as f32 * 100.0 / m as f32
+                });
+                (i, d, b, vol, bright, volume)
+            })
+            .collect();
+
+        let mut g = self.inner.lock().unwrap();
+        let mut taught = Vec::new();
+        let mut changed = false;
+        {
+            let Inner { entries, config, .. } = &mut *g;
+            for (i, d, b, vol, bright, volume) in reads {
+                // L'écran a pu changer pendant la lecture (nouvelle détection, réglage) :
+                // la valeur lue serait alors périmée.
+                let Some(e) = entries.get_mut(i).filter(|e| Arc::ptr_eq(&e.display, &d)) else { continue };
+                if e.slot.busy.load(Ordering::Relaxed) || !e.slot.pending.lock().unwrap().is_empty() {
+                    continue;
+                }
+                if let Some(r) = bright.filter(|r| e.brightness == b && (r - b).abs() >= POLL_TOLERANCE) {
+                    e.brightness = r;
+                    config.last.insert(e.key.clone(), r);
+                    taught.push((e.key.clone(), r));
+                    changed = true;
+                }
+                if let (Some(r), Some(old)) = (volume, vol) {
+                    if e.controls.get(&VCP_VOLUME) == Some(&old) && (r - old).abs() >= POLL_TOLERANCE {
+                        e.controls.insert(VCP_VOLUME, r);
+                        config.last_controls.entry(e.key.clone()).or_default().insert(VCP_VOLUME, r);
+                        changed = true;
+                    }
+                }
+            }
+            if changed {
+                config.master = entries.iter().map(|e| e.brightness).fold(DIM_MIN, f32::max);
+            }
+        }
+        if !changed {
+            return false;
+        }
+        // Un réglage fait sur l'écran compte comme un réglage à la main.
+        g.anchored = false;
+        for (key, v) in taught {
+            g.solar_manual(&key, v);
+        }
+        let _ = g.config.save();
+        true
     }
 
     /// Renvoie à chaque écran sa dernière luminosité et ses curseurs (utile au
@@ -840,7 +915,14 @@ fn spawn_entry(display: Arc<Display>, config: &mut Config) -> Entry {
                 }
             }
             for c in panel.choices_mut() {
-                c.current = ddc.read(c.code).ok().map(|v| v.current as u8).filter(|v| c.values.contains(v));
+                // Valeur hors de la liste annoncée (LG 34WK95U : 0x0B pour plusieurs modes) :
+                // elle ne dit rien, on garde la dernière réglée depuis Dusk.
+                c.current = ddc
+                    .read(c.code)
+                    .ok()
+                    .map(|v| v.current as u8)
+                    .filter(|v| c.values.contains(v))
+                    .or_else(|| remembered.get(&c.code).copied().filter(|v| c.values.contains(v)));
             }
             if panel.mute {
                 muted = ddc.read(panel::VCP_MUTE).is_ok_and(|v| v.current as u8 == panel::MUTE_ON);
@@ -869,7 +951,10 @@ fn spawn_entry(display: Arc<Display>, config: &mut Config) -> Entry {
         stopped: AtomicBool::new(false),
         verify: display.ddc().is_some() && !write_only,
         refused: Mutex::new(Vec::new()),
+        busy: AtomicBool::new(false),
     });
+    // Valeurs annoncées par réglage listé : seule une relecture parmi elles prouve un refus.
+    let listed: HashMap<u8, Vec<u8>> = panel.choices_mut().map(|c| (c.code, c.values.clone())).collect();
     if display.has_hardware() {
         let (d, s) = (display.clone(), slot.clone());
         thread::Builder::new()
@@ -886,6 +971,7 @@ fn spawn_entry(display: Arc<Display>, config: &mut Config) -> Entry {
                         if s.stopped.load(Ordering::Relaxed) {
                             break;
                         }
+                        s.busy.store(true, Ordering::Relaxed);
                         std::mem::take(&mut *guard)
                     };
                     for (code, w) in batch {
@@ -928,7 +1014,12 @@ fn spawn_entry(display: Arc<Display>, config: &mut Config) -> Entry {
                         // Vérification par relecture (réglages listés, écran qui répond) :
                         // un second refus masque le réglage pour cet écran.
                         let (Some(ddc), true, Write::Raw(_)) = (d.ddc(), s.verify && verifiable(code), w) else { continue };
-                        let applied = || ddc.read(code).map(|v| v.current == raw);
+                        let applied = || {
+                            ddc.read(code).map(|v| {
+                                let known = listed.get(&code).is_none_or(|l| l.contains(&(v.current as u8)));
+                                v.current == raw || !known
+                            })
+                        };
                         if applied().is_ok_and(|ok| !ok) {
                             let _ = send();
                             thread::sleep(SETTLE);
@@ -940,6 +1031,7 @@ fn spawn_entry(display: Arc<Display>, config: &mut Config) -> Entry {
                             }
                         }
                     }
+                    s.busy.store(false, Ordering::Relaxed);
                 }
             })
             .expect("thread d'écriture");
