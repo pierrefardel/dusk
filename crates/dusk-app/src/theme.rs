@@ -550,9 +550,29 @@ pub fn wand_image() -> Retained<NSImage> {
 }
 
 /// Enregistre le rendu d'une vue en PNG (aperçus de développement, sans autorisation d'écran).
+/// Rendu en 2x (Retina) quel que soit l'écran ; `DUSK_SNAPSHOT_SCALE` le change.
 pub fn snapshot(view: &NSView, path: &str) {
+    use objc2_app_kit::{NSBitmapImageRep, NSCalibratedRGBColorSpace};
     let rect = view.bounds();
-    let Some(rep) = view.bitmapImageRepForCachingDisplayInRect(rect) else { return };
+    let scale: f64 = std::env::var("DUSK_SNAPSHOT_SCALE").ok().and_then(|s| s.parse().ok()).unwrap_or(2.0);
+    let rep = unsafe {
+        NSBitmapImageRep::initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel(
+            NSBitmapImageRep::alloc(),
+            std::ptr::null_mut(),
+            (rect.size.width * scale).round() as isize,
+            (rect.size.height * scale).round() as isize,
+            8,
+            4,
+            true,
+            false,
+            NSCalibratedRGBColorSpace,
+            0,
+            0,
+        )
+    };
+    let Some(rep) = rep else { return };
+    // Taille en points : le rendu remplit alors les pixels à l'échelle voulue.
+    rep.setSize(rect.size);
     view.cacheDisplayInRect_toBitmapImageRep(rect, &rep);
     let props = objc2_foundation::NSDictionary::new();
     if let Some(data) = unsafe { rep.representationUsingType_properties(objc2_app_kit::NSBitmapImageFileType::PNG, &props) } {
