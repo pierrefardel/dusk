@@ -1,0 +1,14 @@
+[package]
+name = "dusk-cli"
+description = "Ligne de commande Dusk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "dusk"
+path = "src/main.rs"
+
+[dependencies]
+dusk-core.workspace = true
+clap.workspace = true

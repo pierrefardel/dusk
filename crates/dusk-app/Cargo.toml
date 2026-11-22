@@ -1,0 +1,20 @@
+[package]
+name = "dusk-app"
+description = "App barre des menus Dusk (AppKit natif)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "Dusk"
+path = "src/main.rs"
+
+[dependencies]
+dusk-core.workspace = true
+objc2.workspace = true
+objc2-foundation.workspace = true
+objc2-app-kit.workspace = true
+objc2-service-management.workspace = true
+global-hotkey.workspace = true
+libc.workspace = true
+block2 = "0.6"
