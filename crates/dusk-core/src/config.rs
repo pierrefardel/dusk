@@ -52,11 +52,22 @@ pub struct Solar {
     pub excluded: Vec<String>,
     /// Pause demandée depuis le popover, jusqu'à cet instant (secondes Unix).
     pub paused_until: i64,
+    /// Écrans dont l'utilisateur a déjà réglé la luminosité (valeurs vraiment apprises).
+    pub taught: Vec<String>,
+}
+
+impl Solar {
+    /// Retient que l'utilisateur a réglé lui-même cet écran (clé vide : curseur commun).
+    pub fn mark_taught(&mut self, key: &str) {
+        if !self.taught.iter().any(|k| k == key) {
+            self.taught.push(key.to_string());
+        }
+    }
 }
 
 impl Default for Solar {
     fn default() -> Self {
-        Solar { enabled: true, transition: 40.0, levels: HashMap::new(), excluded: Vec::new(), paused_until: 0 }
+        Solar { enabled: true, transition: 40.0, levels: HashMap::new(), excluded: Vec::new(), paused_until: 0, taught: Vec::new() }
     }
 }
 

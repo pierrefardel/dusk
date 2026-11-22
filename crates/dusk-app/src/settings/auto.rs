@@ -77,13 +77,13 @@ impl Settings {
                         NSSize::new(CARD_INNER, theme::S6 * 2.0),
                     ));
                     body.addArrangedSubview(&times_row(mtm, sun, now_text(&st, shown)));
+                    let taught = !self.ivars().engine.config().solar.taught.is_empty();
                     let summary = match shown {
-                        Some((d, n)) => format!(
-                            "{} · {} — {}",
-                            tx("solar.day_short", &pct(d)),
-                            tx("solar.night_short", &pct(n)),
-                            t("solar.learned")
-                        ),
+                        Some((d, n)) => {
+                            let levels =
+                                format!("{} · {}", tx("solar.day_short", &pct(d)), tx("solar.night_short", &pct(n)));
+                            if taught { format!("{levels} — {}", t("solar.learned")) } else { levels }
+                        }
                         None => String::new(),
                     };
                     let summary = theme::label(mtm, &summary, 12.0, false, &theme::secondary());

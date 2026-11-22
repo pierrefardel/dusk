@@ -173,13 +173,19 @@ impl DdcService {
             out.extend_from_slice(&r[5..5 + n]);
             offset += n as u16;
         }
-        let s = String::from_utf8_lossy(&out);
-        Ok(s.trim_end_matches('\0').trim().to_string())
+        Ok(caps_text(&out))
     }
 }
 
 /// Codes VCP annoncés dans une chaîne de capacités, avec leurs valeurs permises
 /// (vide pour un réglage continu).
+/// Texte des capacités, coupé au premier nul : certains écrans complètent le
+/// dernier fragment par un nul suivi d'octets parasites.
+fn caps_text(raw: &[u8]) -> String {
+    let end = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
+    String::from_utf8_lossy(&raw[..end]).trim().to_string()
+}
+
 pub fn parse_vcp_list(caps: &str) -> std::collections::BTreeMap<u8, Vec<u8>> {
     let mut map = std::collections::BTreeMap::new();
     let lower = caps.to_ascii_lowercase();
@@ -238,6 +244,12 @@ fn parse_reply(code: u8, r: &[u8; 11]) -> Result<VcpValue> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn caps_text_stops_at_nul() {
+        assert_eq!(super::caps_text(b"(vcp(10 12))\0\xff\xfe"), "(vcp(10 12))");
+        assert_eq!(super::caps_text(b" (vcp(10)) "), "(vcp(10))");
+    }
+
     use super::*;
 
     #[test]

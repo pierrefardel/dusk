@@ -260,6 +260,7 @@ impl Inner {
         if !self.config.solar.enabled {
             return;
         }
+        self.config.solar.mark_taught(key);
         if let Some(f) = self.room_factor() {
             // Pièce : on déplace la valeur (claire ou sombre) la plus proche pour que
             // le mélange donne exactement ce réglage à ce niveau de lumière.
@@ -588,6 +589,7 @@ impl Engine {
         } else {
             lv.1 = v;
         }
+        g.config.solar.mark_taught(key);
         g.held_until = 0;
         let _ = g.config.save();
         g.solar_apply(true);
@@ -789,7 +791,10 @@ fn spawn_entry(display: Arc<Display>, config: &mut Config) -> Entry {
     // Un écran lu à 0 alors que Dusk l'avait mis « plus sombre » : on garde ce réglage.
     let brightness = match (read, last) {
         (Some(r), Some(l)) if r <= 0.0 && l < 0.0 => l,
-        _ => read.or(last).unwrap_or(if display.has_hardware() { 50.0 } else { 100.0 }),
+        // Valeur inconnue (écran en écriture seule, jamais réglé) : la plupart des
+        // écrans sortent d'usine très lumineux, on part donc de 100 plutôt que de
+        // les assombrir dès l'installation.
+        _ => read.or(last).unwrap_or(100.0),
     };
     let brightness = if display.has_hardware() { brightness } else { brightness.max(0.0) };
 
