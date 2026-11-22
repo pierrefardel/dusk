@@ -7,7 +7,8 @@
 #
 # Ensuite, dans l'ordre (le flux ne doit pas annoncer un zip pas encore en ligne) :
 #   1. publier le brouillon sur GitHub ;
-#   2. commit privé, ./scripts/publish.sh, push des deux dépôts (appcast.xml part avec).
+#   2. commit privé, ./scripts/publish.sh, push des deux dépôts (appcast.xml part avec) ;
+#   3. commit et push du tap Homebrew (../homebrew-dusk), préparé ici.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -16,6 +17,7 @@ VERSION="${1:?usage : ./scripts/release.sh X.Y.Z}"
 REPO=pierrefardel/dusk
 TAG="v$VERSION"
 ZIP=dist/Dusk.zip
+TAP="${DUSK_TAP_DIR:-../homebrew-dusk}"
 
 # Numéro de version (Cargo.toml du workspace), repris par bundle.sh dans l'Info.plist.
 sed -i '' -E "s/^version = \"[0-9.]+\"/version = \"$VERSION\"/" Cargo.toml
@@ -59,4 +61,11 @@ path.write_text(text.replace(marker, marker + item, 1))
 PY
 
 gh release create "$TAG" "$ZIP" --repo "$REPO" --draft --title "Dusk $VERSION" --notes ""
-echo "Brouillon $TAG prêt. Ensuite : publier le brouillon, commit, ./scripts/publish.sh, push."
+
+# Tap Homebrew : nouvelle version et somme du zip, prêtes à commiter.
+if [ -f "$TAP/Casks/dusk.rb" ]; then
+  SHA=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
+  sed -i '' -E "s/^  version \"[0-9.]+\"/  version \"$VERSION\"/; s/^  sha256 \"[0-9a-f]+\"/  sha256 \"$SHA\"/" "$TAP/Casks/dusk.rb"
+  echo "Tap Homebrew mis à jour : $TAP/Casks/dusk.rb"
+fi
+echo "Brouillon $TAG prêt. Ensuite : publier le brouillon, commit, ./scripts/publish.sh, push, puis le tap."

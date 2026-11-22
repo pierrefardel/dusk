@@ -47,6 +47,8 @@ Dusk parle à tes écrans externes comme le font leurs propres boutons (DDC/CI) 
 
 Ensuite, Dusk se met à jour tout seul : il vérifie une fois par jour et installe les nouvelles versions en silence quand il se ferme. Si tu as la version 0.1.0, télécharge une fois la dernière version à la main ; tout est automatique ensuite.
 
+Ou avec [Homebrew](https://brew.sh) : `brew install --cask pierrefardel/dusk/dusk` (le premier lancement demande le même passage par **Ouvrir quand même**).
+
 ## Compiler soi-même
 
 ```sh
