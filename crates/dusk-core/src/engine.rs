@@ -11,7 +11,7 @@ use crate::config::Config;
 use crate::ddc::{parse_vcp_list, VCP_BRIGHTNESS, VCP_CONTRAST, VCP_INPUT_SOURCE, VCP_VOLUME};
 use crate::ambient;
 use crate::dim::{self, DIM_MIN};
-use crate::display::{list_displays, Display};
+use crate::display::{list_displays, Backend, Display};
 use crate::panel::{self, Panel};
 use crate::quirks;
 use crate::solar::{self, Place, SunTimes};
@@ -848,7 +848,7 @@ fn hide(panel: &mut Panel, controls: &mut HashMap<u8, f32>, codes: &[u8]) {
 }
 
 fn detect(config: &mut Config) -> Vec<Entry> {
-    list_displays().into_iter().map(|d| spawn_entry(Arc::new(d), config)).collect()
+    list_displays().into_iter().map(|d| spawn_entry(d, config)).collect()
 }
 
 fn remembered_controls(key: &str, config: &Config, codes: &[u8]) -> HashMap<u8, f32> {
@@ -872,9 +872,29 @@ fn capabilities(display: &Display, key: &str, config: &mut Config) -> BTreeMap<u
     map
 }
 
-fn spawn_entry(display: Arc<Display>, config: &mut Config) -> Entry {
+fn spawn_entry(mut display: Display, config: &mut Config) -> Entry {
     let key = display.key();
     let (read, max) = read_initial(&display);
+    // Écran joignable mais muet (port HDMI d'un dock, DDC/CI coupé dans son menu) :
+    // rien ne prouve qu'il obéit, il est donc réglé par l'image comme une TV, sinon
+    // le curseur resterait sans effet au-dessus de zéro. Seule preuve acceptée :
+    // il livre ses capacités (lues sur le bus, pas en cache).
+    if read.is_none() {
+        let caps = display.ddc().map(|d| d.capabilities());
+        match caps {
+            Some(Ok(c)) if !parse_vcp_list(&c).is_empty() => {
+                config.caps.insert(key.clone(), c);
+            }
+            Some(_) => {
+                if crate::ddc::debug() {
+                    eprintln!("[dusk] {} : ne répond pas, réglé par l'image", display.name);
+                }
+                display.backend = Backend::None;
+            }
+            None => {}
+        }
+    }
+    let display = Arc::new(display);
     let write_only = display.has_hardware() && read.is_none();
     let last = config.last.get(&key).copied();
     // Un écran lu à 0 alors que Dusk l'avait mis « plus sombre » : on garde ce réglage.

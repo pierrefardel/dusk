@@ -3,6 +3,15 @@
   <channel>
     <title>Dusk</title>
     <item>
+      <title>Dusk 0.1.5</title>
+      <link>https://github.com/pierrefardel/dusk/releases/tag/v0.1.5</link>
+      <pubDate>Tue, 24 Nov 2026 17:04:53 GMT</pubDate>
+      <sparkle:version>0.1.5</sparkle:version>
+      <sparkle:shortVersionString>0.1.5</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/pierrefardel/dusk/releases/download/v0.1.5/Dusk.zip" type="application/octet-stream" sparkle:edSignature="NtTOvGYlVj+VlHE9KUo8VkUfA9JnlWIRcGnzBhtitguC5DiFsUMeyAe0qPt8qPCv0qiuyfbXpReBF+18SW1+CA==" length="1665195"/>
+    </item>
+    <item>
       <title>Dusk 0.1.4</title>
       <link>https://github.com/pierrefardel/dusk/releases/tag/v0.1.4</link>
       <pubDate>Sun, 22 Nov 2026 20:19:34 GMT</pubDate>

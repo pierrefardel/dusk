@@ -156,7 +156,7 @@ dependencies = [
 
 [[package]]
 name = "dusk-app"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "block2",
  "dusk-core",
@@ -170,7 +170,7 @@ dependencies = [
 
 [[package]]
 name = "dusk-cli"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "clap",
  "dusk-core",
@@ -178,7 +178,7 @@ dependencies = [
 
 [[package]]
 name = "dusk-core"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "core-foundation",
  "libc",
